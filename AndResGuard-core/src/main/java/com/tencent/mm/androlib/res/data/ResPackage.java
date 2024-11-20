@@ -27,12 +27,20 @@ public class ResPackage {
 
   private final Map<Integer, String> mSpecNamesReplace;
   private final Map<String, Set<String>> mSpecNamesBlock;
+  private final Map<String, String> mUsedProguardName;
   private boolean mCanProguard = false;
 
   public ResPackage(int id, String name) {
     this.mName = name;
     mSpecNamesReplace = new LinkedHashMap<>();
     mSpecNamesBlock = new LinkedHashMap<>();
+    mUsedProguardName = new LinkedHashMap<>();
+  }
+  public Map<String, String> getUsedProguardName(){
+    return mUsedProguardName;
+  }
+  public void putUsedProguardName(String key, String value){
+    mUsedProguardName.put(key,value);
   }
 
   public boolean isCanResguard() {

@@ -38,7 +38,7 @@ public class ApkDecoder {
   private File mOutTempDir;
   private File mResMappingFile;
   private File mMergeDuplicatedResMappingFile;
-  private HashMap<String, Integer> mCompressData;
+  private HashMap<String, FileOperation.CompressData> mCompressData;
 
   public ApkDecoder(Configuration config, File apkFile) {
     this.config = config;
@@ -83,6 +83,7 @@ public class ApkDecoder {
     String unZipDest = new File(mOutDir, TypedValue.UNZIP_FILE_PATH).getAbsolutePath();
     System.out.printf("unziping apk to %s\n", unZipDest);
     mCompressData = FileOperation.unZipAPk(apkFile.getAbsoluteFile().getAbsolutePath(), unZipDest);
+    //使用AGP4.2的资源路径优化项之后这里的配置只支持 *.png这种类型的正则,不支持单个文件的压缩配置
     dealWithCompressConfig();
     //将res混淆成r
     if (!config.mKeepRoot) {
@@ -129,12 +130,14 @@ public class ApkDecoder {
     if (config.mUseCompress) {
       HashSet<Pattern> patterns = config.mCompressPatterns;
       if (!patterns.isEmpty()) {
-        for (Entry<String, Integer> entry : mCompressData.entrySet()) {
+        for (Entry<String, FileOperation.CompressData> entry : mCompressData.entrySet()) {
           String name = entry.getKey();
           for (Iterator<Pattern> it = patterns.iterator(); it.hasNext(); ) {
             Pattern p = it.next();
             if (p.matcher(name).matches()) {
-              mCompressData.put(name, TypedValue.ZIP_DEFLATED);
+              FileOperation.CompressData value = entry.getValue();
+              FileOperation.CompressData compressData = new FileOperation.CompressData(TypedValue.ZIP_DEFLATED, value.originalName, value.newName);
+              mCompressData.put(name, compressData);
             }
           }
         }
@@ -142,7 +145,7 @@ public class ApkDecoder {
     }
   }
 
-  public HashMap<String, Integer> getCompressData() {
+  public HashMap<String, FileOperation.CompressData> getCompressData() {
     return mCompressData;
   }
 

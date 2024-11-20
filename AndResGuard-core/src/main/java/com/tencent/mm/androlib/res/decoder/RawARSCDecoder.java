@@ -21,13 +21,16 @@ import com.mindprod.ledatastream.LEDataInputStream;
 import com.tencent.mm.androlib.AndrolibException;
 import com.tencent.mm.androlib.res.data.ResPackage;
 import com.tencent.mm.androlib.res.data.ResType;
+import com.tencent.mm.androlib.res.util.StringUtil;
 import com.tencent.mm.util.ExtDataInput;
+import com.tencent.mm.util.TypedValue;
 import java.io.EOFException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.math.BigInteger;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Map;
 import java.util.Set;
 import java.util.logging.Logger;
 import org.apache.commons.io.input.CountingInputStream;
@@ -46,6 +49,7 @@ public class RawARSCDecoder {
   private static final int KNOWN_CONFIG_BYTES = 64;
 
   private static HashMap<Integer, Set<String>> mExistTypeNames;
+  private static HashMap<Integer, Set<String>> mExistTypeNamesValues;
 
   private final CountingInputStream mCountIn;
 
@@ -59,11 +63,16 @@ public class RawARSCDecoder {
   private int mCurTypeID = -1;
   private ResPackage[] mPkgs;
   private int mResId;
+  public static HashSet<String> allSpecNameValuesStrings;
+  public static HashSet<String> filterAllSpecNameValuesStrings;
+  public static HashSet<String> allSpecNameStrings;
+  private StringBlock mTableStrings;
 
   private RawARSCDecoder(InputStream arscStream) throws AndrolibException, IOException {
     arscStream = mCountIn = new CountingInputStream(arscStream);
     mIn = new ExtDataInput(new LEDataInputStream(arscStream));
     mExistTypeNames = new HashMap<>();
+    mExistTypeNamesValues = new HashMap<>();
   }
 
   public static ResPackage[] decode(InputStream arscStream) throws AndrolibException {
@@ -80,10 +89,52 @@ public class RawARSCDecoder {
     return mExistTypeNames.get(type);
   }
 
+  //entry real value --> path
+  public static Set<String> getAllExistTypeSpecNameValuesStrings() {
+    if (allSpecNameValuesStrings == null){
+      allSpecNameValuesStrings = new HashSet<>();
+      for (Map.Entry<Integer, Set<String>> set: mExistTypeNamesValues.entrySet()) {
+        allSpecNameValuesStrings.addAll(set.getValue());
+      }
+    }
+    return allSpecNameValuesStrings;
+  }
+
+  /**
+   * 过滤String常量池中的地址为指定格式，方便混淆器过滤已使用过的file name
+   */
+  public static Set<String> getFilterSpecNameValuesStrings(){
+    if (filterAllSpecNameValuesStrings == null){
+      filterAllSpecNameValuesStrings = new HashSet<>();
+      if (allSpecNameValuesStrings == null){
+        getAllExistTypeSpecNameValuesStrings();
+      }
+      allSpecNameValuesStrings.forEach( v -> {
+        int sepIndex = v.lastIndexOf("/");
+        int dotIndex = v.indexOf(".");
+        if (sepIndex == -1 || dotIndex == -1) {
+          System.out.printf("FilterSpecNameValuesStrings skip special value: %s\n", v);
+        }else {
+          filterAllSpecNameValuesStrings.add(v.substring(sepIndex + 1, dotIndex));
+        }
+      });
+    }
+    return filterAllSpecNameValuesStrings;
+  }
+  public static Set<String> getAllExistTypeSpecNameStrings() {
+    if (allSpecNameStrings == null){
+      allSpecNameStrings = new HashSet<>();
+      for (Map.Entry<Integer, Set<String>> set: mExistTypeNames.entrySet()) {
+        allSpecNameStrings.addAll(set.getValue());
+      }
+    }
+    return allSpecNameStrings;
+  }
+
   private ResPackage[] readTable() throws IOException, AndrolibException {
     nextChunkCheckType(Header.TYPE_TABLE);
     int packageCount = mIn.readInt();
-    StringBlock.read(mIn);
+    mTableStrings = StringBlock.read(mIn);
     ResPackage[] packages = new ResPackage[packageCount];
     nextChunk();
     for (int i = 0; i < packageCount; i++) {
@@ -232,6 +283,16 @@ public class RawARSCDecoder {
     mIn.skipCheckByte((byte) 0);
     byte type = mIn.readByte();
     int data = mIn.readInt();
+    //类型为String的时候将将每一个资源项的value保存，用于生成混淆器时排除这部分 排除String id array
+    if (type == TypedValue.TYPE_STRING && isToResguardFile(mTypeNames.getString(mCurTypeID - 1))){
+      String value = mTableStrings.get(data).toString();
+      if (StringUtil.isBlank(value) || value.equalsIgnoreCase("null")) return;
+      putTypeSpecNameValuesStrings(mCurTypeID, mTableStrings.get(data).toString());
+    }
+  }
+
+  private boolean isToResguardFile(String name) {
+    return (!name.equals("string") && !name.equals("id") && !name.equals("array") && !name.equals("plurals"));
   }
 
   private void readConfigFlags() throws IOException, AndrolibException {
@@ -370,6 +431,15 @@ public class RawARSCDecoder {
     }
     names.add(name);
     mExistTypeNames.put(type, names);
+  }
+
+  private void putTypeSpecNameValuesStrings(int type, String name) {
+    Set<String> names = mExistTypeNamesValues.get(type);
+    if (names == null) {
+      names = new HashSet<>();
+    }
+    names.add(name);
+    mExistTypeNamesValues.put(type, names);
   }
 
   public static class Header {

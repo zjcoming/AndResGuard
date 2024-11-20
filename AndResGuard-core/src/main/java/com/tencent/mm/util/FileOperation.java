@@ -146,11 +146,11 @@ public class FileOperation {
   }
 
   @SuppressWarnings("rawtypes")
-  public static HashMap<String, Integer> unZipAPk(String fileName, String filePath) throws IOException {
+  public static HashMap<String, CompressData> unZipAPk(String fileName, String filePath) throws IOException {
     checkDirectory(filePath);
     ZipFile zipFile = new ZipFile(fileName);
     Enumeration emu = zipFile.entries();
-    HashMap<String, Integer> compress = new HashMap<>();
+    HashMap<String, CompressData> compress = new HashMap<>();
     try {
       while (emu.hasMoreElements()) {
         ZipEntry entry = (ZipEntry) emu.nextElement();
@@ -161,17 +161,27 @@ public class FileOperation {
         BufferedInputStream bis = new BufferedInputStream(zipFile.getInputStream(entry));
 
         File file = new File(filePath + File.separator + entry.getName());
-
-        File parent = file.getParentFile();
-        if (parent != null && (!parent.exists())) {
-          parent.mkdirs();
-        }
         //要用linux的斜杠
         String compatibaleresult = entry.getName();
         if (compatibaleresult.contains("\\")) {
           compatibaleresult = compatibaleresult.replace("\\", "/");
         }
-        compress.put(compatibaleresult, entry.getMethod());
+        String suffix = "";
+        int i = 0;
+        //Linux和MAC OS文件名不区分大小写ab.xml、AB.xml、Ab.xml、aB.xml会被误判断为相同的文件
+        while (file.exists() && !compress.containsKey(compatibaleresult)) {
+          suffix = "$." + i + ".duplicatefile";
+          file = new File(filePath + File.separator + entry.getName() + suffix);
+          i++;
+        }
+
+        File parent = file.getParentFile();
+        if (parent != null && !parent.exists()) {
+          parent.mkdirs();
+        }
+
+        CompressData compressData = new CompressData(entry.getMethod(), compatibaleresult, compatibaleresult + suffix);
+        compress.put(compatibaleresult, compressData);
         FileOutputStream fos = new FileOutputStream(file);
         BufferedOutputStream bos = new BufferedOutputStream(fos, BUFFER);
 
@@ -200,8 +210,8 @@ public class FileOperation {
    * @throws IOException io exception
    */
   public static void zipFiles(
-      Collection<File> resFileList, File baseFolder, File zipFile, HashMap<String, Integer> compressData)
-      throws IOException {
+          Collection<File> resFileList, File baseFolder, File zipFile, HashMap<String, CompressData> compressData)
+          throws IOException {
     ZipOutputStream zipOut = new ZipOutputStream(new BufferedOutputStream(new FileOutputStream(zipFile), BUFFER));
     for (File resFile : resFileList) {
       if (resFile.exists()) {
@@ -222,9 +232,15 @@ public class FileOperation {
     zipOut.close();
   }
 
-  private static void zipFile(
-      File resFile, ZipOutputStream zipout, String rootpath, HashMap<String, Integer> compressData) throws IOException {
-    rootpath = rootpath + (rootpath.trim().length() == 0 ? "" : File.separator) + resFile.getName();
+  private static void zipFile(File resFile, ZipOutputStream zipout, String rootpath, HashMap<String, CompressData> compressData) throws IOException {
+    String name = resFile.getName();
+    boolean needRename = false;
+    if (name.endsWith(".duplicatefile")) {
+      int index = name.lastIndexOf("$");
+      name = name.substring(0, index);
+      needRename = true;
+    }
+    rootpath = rootpath + ((rootpath.trim().length() == 0) ? "" : File.separator) + name;
     if (resFile.isDirectory()) {
       File[] fileList = resFile.listFiles();
       for (File file : fileList) {
@@ -241,9 +257,12 @@ public class FileOperation {
         //throw new IOException(String.format("do not have the compress data path=%s", rootpath));
         return;
       }
-      int compressMethod = compressData.get(rootpath);
+      CompressData data = compressData.get(rootpath);
+      int compressMethod = data.method;
       ZipEntry entry = new ZipEntry(rootpath);
-
+      if (needRename) {
+        System.out.println("entry.getName()===>" + entry.getName());
+      }
       if (compressMethod == ZipEntry.DEFLATED) {
         entry.setMethod(ZipEntry.DEFLATED);
       } else {
@@ -279,5 +298,16 @@ public class FileOperation {
       output.close();
     }
     return output.toByteArray();
+  }
+  public static final class CompressData {
+    public final int method;
+    public final String originalName;
+    public final String newName;
+
+    public CompressData(int method, String originalName, String newName) {
+      this.method = method;
+      this.originalName = originalName;
+      this.newName = newName;
+    }
   }
 }

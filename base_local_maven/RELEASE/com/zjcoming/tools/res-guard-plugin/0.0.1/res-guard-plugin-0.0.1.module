@@ -11,7 +11,7 @@
   "createdBy": {
     "gradle": {
       "version": "6.5",
-      "buildId": "q7lrtmvikfab3jqewnihz4trne"
+      "buildId": "trw2tkdsbzh7lgwvnkxh6del5m"
     }
   },
   "variants": [
@@ -44,11 +44,11 @@
         {
           "name": "res-guard-plugin-0.0.1.jar",
           "url": "res-guard-plugin-0.0.1.jar",
-          "size": 35818,
-          "sha512": "4ef88906521028b31286a23db606df60c2e36ce6b6d1a5448e2e91b35731dcbb0b2687036a3e91bee28f32aece845c1d362812a210ace8612fe34a58c8fa0102",
-          "sha256": "f892d156426d68a8e4ef8e0dff1c7a25e2044024b29058822e0acc3a496b13fd",
-          "sha1": "9af7a1b3cf960f6fdeec2c25237fa9eb3276fbbc",
-          "md5": "2bcec875a6da2451acc016d2de9e2e96"
+          "size": 35825,
+          "sha512": "0fef733e88e49c4565e6bb210c0528683037fee00e9355a23625a587ab725e912d14fddebc97a38e11383f6ebcfce4b4c362213b3eb886ad7eb751b6b876d48c",
+          "sha256": "7905d089e3545aa7b651526a5b11a3a1c6e9a33330ae4427cf3683368978928a",
+          "sha1": "79ff032d5858bc527a2a92bebd11c6aba4b3964a",
+          "md5": "9809e9e04511d4e4f66054035af30e50"
         }
       ]
     },
@@ -81,11 +81,11 @@
         {
           "name": "res-guard-plugin-0.0.1.jar",
           "url": "res-guard-plugin-0.0.1.jar",
-          "size": 35818,
-          "sha512": "4ef88906521028b31286a23db606df60c2e36ce6b6d1a5448e2e91b35731dcbb0b2687036a3e91bee28f32aece845c1d362812a210ace8612fe34a58c8fa0102",
-          "sha256": "f892d156426d68a8e4ef8e0dff1c7a25e2044024b29058822e0acc3a496b13fd",
-          "sha1": "9af7a1b3cf960f6fdeec2c25237fa9eb3276fbbc",
-          "md5": "2bcec875a6da2451acc016d2de9e2e96"
+          "size": 35825,
+          "sha512": "0fef733e88e49c4565e6bb210c0528683037fee00e9355a23625a587ab725e912d14fddebc97a38e11383f6ebcfce4b4c362213b3eb886ad7eb751b6b876d48c",
+          "sha256": "7905d089e3545aa7b651526a5b11a3a1c6e9a33330ae4427cf3683368978928a",
+          "sha1": "79ff032d5858bc527a2a92bebd11c6aba4b3964a",
+          "md5": "9809e9e04511d4e4f66054035af30e50"
         }
       ]
     }

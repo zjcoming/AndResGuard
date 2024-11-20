@@ -53,6 +53,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.logging.Logger;
 import java.util.regex.Pattern;
 
@@ -138,7 +139,7 @@ public class ARSCDecoder {
     mMergeDuplicatedResMappingWriter.flush();
 
     mResguardBuilder = new ResguardStringBuilder();
-    mResguardBuilder.reset(null);
+//    mResguardBuilder.initProguardName(null);
 
     final Configuration config = mApkDecoder.getConfig();
 
@@ -146,7 +147,7 @@ public class ARSCDecoder {
 
     File[] resFiles = rawResFile.listFiles();
 
-    // 需要看看哪些类型是要混淆文件路径的
+    // 需要看看哪些类型是要混淆文件路径的 仍然需要打开适配不开启AGP4.2资源路径优化的情况
     for (File resFile : resFiles) {
       String raw = resFile.getName();
       if (raw.contains("-")) {
@@ -155,7 +156,7 @@ public class ARSCDecoder {
       mShouldResguardTypeSet.add(raw);
     }
 
-    if (!config.mKeepRoot) {
+    if (!config.mKeepRoot && mResguardBuilder.hasInitProguard.get()) {
       // 需要保持之前的命名方式
       if (config.mUseKeepMapping) {
         HashMap<String, String> fileMapping = config.mOldFileMapping;
@@ -434,6 +435,17 @@ public class ARSCDecoder {
     return null;
   }
 
+  private HashMap<String, HashSet<Pattern>> getWhiteList() {
+    final String packName = mPkg.getName();
+    if (mApkDecoder.getConfig().mWhiteList.containsKey(packName)) {
+      if (mApkDecoder.getConfig().mUseWhiteList) {
+        HashMap<String, HashSet<Pattern>> typeMaps = mApkDecoder.getConfig().mWhiteList.get(packName);
+        return typeMaps;
+      }
+    }
+    return null;
+  }
+
   private void readLibraryType() throws AndrolibException, IOException {
     checkChunkType(Header.TYPE_LIBRARY);
     int libraryCount = mIn.readInt();
@@ -480,10 +492,21 @@ public class ARSCDecoder {
 
   private void initResGuardBuild(int resTypeId) {
     // we need remove string from resguard candidate list if it exists in white list
-    HashSet<Pattern> whiteListPatterns = getWhiteList(mType.getName());
+    HashMap<String, HashSet<Pattern>> allWhitelist = getWhiteList();
     // init resguard builder
-    mResguardBuilder.reset(whiteListPatterns);
-    mResguardBuilder.removeStrings(RawARSCDecoder.getExistTypeSpecNameStrings(resTypeId));
+    // 生成一次混淆名称，不再是之前的每个资源类型重置一次混淆名称
+    HashSet<Pattern> allWhitelistPatterns = null;
+    if (allWhitelist != null){
+      allWhitelistPatterns = new HashSet<>();
+      for (String typeName: allWhitelist.keySet()) {
+        //.*会有bug
+        allWhitelistPatterns.addAll(allWhitelist.get(typeName));
+      }
+    }
+    mResguardBuilder.initProguardName(allWhitelistPatterns);
+    //should remove all type specName at the first time
+    mResguardBuilder.removeStrings(RawARSCDecoder.getAllExistTypeSpecNameStrings());
+    mResguardBuilder.removeStrings(RawARSCDecoder.getFilterSpecNameValuesStrings());
     // 如果是保持mapping的话，需要去掉某部分已经用过的mapping
     reduceFromOldMappingFile();
   }
@@ -700,6 +723,12 @@ public class ARSCDecoder {
     }
   }
 
+  private Boolean shouldResguardType(String typeName){
+    boolean res = mShouldResguardTypeSet.contains(mType.getName());
+    //for test
+    return true;
+  }
+
   /**
    * @param flags whether read direct
    */
@@ -716,12 +745,17 @@ public class ARSCDecoder {
        && flags
        && type == TypedValue.TYPE_STRING
        && mShouldResguardForType
-       && mShouldResguardTypeSet.contains(mType.getName())) {
+       && shouldResguardType(mType.getName())) {
       if (mTableStringsResguard.get(data) == null) {
         String raw = mTableStrings.get(data).toString();
         if (StringUtil.isBlank(raw) || raw.equalsIgnoreCase("null")) return;
 
         String proguard = mPkg.getSpecRepplace(mResId);
+        if (mPkg.getUsedProguardName().containsKey(proguard)) {
+          String newProguardName = mResguardBuilder.getReplaceString();
+          System.out.printf("混淆名称: %s 已使用,为 %s 重新生成混淆名: %s\n",proguard, raw, newProguardName);
+          proguard = newProguardName;
+        }
         //这个要写死这个，因为resources.arsc里面就是用这个
         int secondSlash = raw.lastIndexOf("/");
         if (secondSlash == -1) {
@@ -752,7 +786,17 @@ public class ARSCDecoder {
           compatibaleraw = compatibaleraw.replace("/", File.separator);
         }
 
-        File resRawFile = new File(mApkDecoder.getOutTempDir().getAbsolutePath() + File.separator + compatibaleraw);
+        String adaptRawFileName;
+        if (mApkDecoder.getCompressData().containsKey(raw)){
+          String newName = mApkDecoder.getCompressData().get(raw).newName;
+          if (!newName.startsWith(raw)){
+            System.err.printf("compressData error! key: %s newName: %s\n", raw, newName);
+          }
+          adaptRawFileName = newName;
+        }else {
+          throw new RuntimeException("error! there's not file: " + raw + " in mCompressData");
+        }
+        File resRawFile = new File(mApkDecoder.getOutTempDir().getAbsolutePath() + File.separator + adaptRawFileName);
         File resDestFile = new File(mApkDecoder.getOutDir().getAbsolutePath() + File.separator + compatibaleresult);
 
         MergeDuplicatedResInfo filterInfo = null;
@@ -766,8 +810,11 @@ public class ARSCDecoder {
         }
 
         //这里用的是linux的分隔符
-        HashMap<String, Integer> compressData = mApkDecoder.getCompressData();
+        HashMap<String, FileOperation.CompressData> compressData = mApkDecoder.getCompressData();
         if (compressData.containsKey(raw)) {
+          if (compressData.containsKey(result) && filterInfo == null){
+            throw new RuntimeException("compressData add error! key:"+ result + " already exist!");
+          }
           compressData.put(result, compressData.get(raw));
         } else {
           System.err.printf("can not find the compress dataresFile=%s\n", raw);
@@ -776,7 +823,7 @@ public class ARSCDecoder {
         if (!resRawFile.exists()) {
           System.err.printf("can not find res file, you delete it? path: resFile=%s\n", resRawFile.getAbsolutePath());
         } else {
-          if (!mergeDuplicatedRes && resDestFile.exists()) {
+          if (filterInfo == null && resDestFile.exists()) {
             throw new AndrolibException(String.format("res dest file is already  found: destFile=%s",
                resDestFile.getAbsolutePath()
             ));
@@ -787,6 +834,7 @@ public class ARSCDecoder {
           //already copied
           mApkDecoder.removeCopiedResFile(resRawFile.toPath());
           mTableStringsResguard.put(data, result);
+          mPkg.putUsedProguardName(proguard, raw);
         }
       }
     }
@@ -1107,6 +1155,7 @@ public class ARSCDecoder {
     private final List<String> mReplaceStringBuffer;
     private final Set<Integer> mIsReplaced;
     private final Set<Integer> mIsWhiteList;
+    private AtomicBoolean hasInitProguard = new AtomicBoolean(false);
     private String[] mAToZ = {
        "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v",
        "w", "x", "y", "z"
@@ -1114,6 +1163,9 @@ public class ARSCDecoder {
     private String[] mAToAll = {
        "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "_", "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k",
        "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z"
+    };
+    private String[] numbers = {
+            "0", "1", "2"
     };
     /**
      * 在window上面有些关键字是不能作为文件名的
@@ -1129,45 +1181,83 @@ public class ARSCDecoder {
       mFileNameBlackList.add("prn");
       mFileNameBlackList.add("aux");
       mFileNameBlackList.add("nul");
+      mFileNameBlackList.add("com1");
+      mFileNameBlackList.add("com2");
+      mFileNameBlackList.add("com3");
+      mFileNameBlackList.add("com4");
+      mFileNameBlackList.add("com5");
+      mFileNameBlackList.add("com6");
+      mFileNameBlackList.add("com7");
+      mFileNameBlackList.add("com8");
+      mFileNameBlackList.add("com9");
+      mFileNameBlackList.add("lpt1");
+      mFileNameBlackList.add("lpt2");
+      mFileNameBlackList.add("lpt3");
+      mFileNameBlackList.add("lpt4");
+      mFileNameBlackList.add("lpt5");
+      mFileNameBlackList.add("lpt6");
+      mFileNameBlackList.add("lpt7");
+      mFileNameBlackList.add("lpt8");
+      mFileNameBlackList.add("lpt9");
       mReplaceStringBuffer = new ArrayList<>();
       mIsReplaced = new HashSet<>();
       mIsWhiteList = new HashSet<>();
     }
 
-    public void reset(HashSet<Pattern> blacklistPatterns) {
-      mReplaceStringBuffer.clear();
+    public void initProguardName(HashSet<Pattern> blacklistPatterns) {
       mIsReplaced.clear();
       mIsWhiteList.clear();
+      if (hasInitProguard.compareAndSet(false,true)){
+        mReplaceStringBuffer.clear();
 
-      for (int i = 0; i < mAToZ.length; i++) {
-        String str = mAToZ[i];
-        if (!Utils.match(str, blacklistPatterns)) {
-          mReplaceStringBuffer.add(str);
-        }
-      }
-
-      for (int i = 0; i < mAToZ.length; i++) {
-        String first = mAToZ[i];
-        for (int j = 0; j < mAToAll.length; j++) {
-          String str = first + mAToAll[j];
+        for (int i = 0; i < mAToZ.length; i++) {
+          String str = mAToZ[i];
           if (!Utils.match(str, blacklistPatterns)) {
             mReplaceStringBuffer.add(str);
           }
         }
-      }
 
-      for (int i = 0; i < mAToZ.length; i++) {
-        String first = mAToZ[i];
-        for (int j = 0; j < mAToAll.length; j++) {
-          String second = mAToAll[j];
-          for (int k = 0; k < mAToAll.length; k++) {
-            String third = mAToAll[k];
-            String str = first + second + third;
-            if (!mFileNameBlackList.contains(str) && !Utils.match(str, blacklistPatterns)) {
+        for (int i = 0; i < mAToZ.length; i++) {
+          String first = mAToZ[i];
+          for (int j = 0; j < mAToAll.length; j++) {
+            String str = first + mAToAll[j];
+            if (!Utils.match(str, blacklistPatterns)) {
               mReplaceStringBuffer.add(str);
             }
           }
         }
+
+        for (int i = 0; i < mAToZ.length; i++) {
+          String first = mAToZ[i];
+          for (int j = 0; j < mAToAll.length; j++) {
+            String second = mAToAll[j];
+            for (int k = 0; k < mAToAll.length; k++) {
+              String third = mAToAll[k];
+              String str = first + second + third;
+              if (!mFileNameBlackList.contains(str) && !Utils.match(str, blacklistPatterns)) {
+                mReplaceStringBuffer.add(str);
+              }
+            }
+          }
+        }
+
+        for (int i = 0; i < mAToZ.length; i++) {
+          String first = mAToZ[i];
+          for (int j = 0; j < mAToAll.length; j++) {
+            String second = mAToAll[j];
+            for (int k = 0; k < mAToAll.length; k++) {
+              String third = mAToAll[k];
+              for (int l = 0; l< numbers.length; l++){
+                String fourth = numbers[l];
+                String str = first + second + third + fourth;
+                if (!mFileNameBlackList.contains(str) && !Utils.match(str, blacklistPatterns)) {
+                  mReplaceStringBuffer.add(str);
+                }
+              }
+            }
+          }
+        }
+        System.out.printf("ResguardStringBuilder init. mReplaceStringBuffer total size: %d\n", mReplaceStringBuffer.size());
       }
     }
 
@@ -1175,6 +1265,7 @@ public class ARSCDecoder {
     public void removeStrings(Collection<String> collection) {
       if (collection == null) return;
       mReplaceStringBuffer.removeAll(collection);
+      System.out.println("remove name in mReplaceStringBuffer. real size: " + mReplaceStringBuffer.size());
     }
 
     public boolean isReplaced(int id) {
@@ -1195,7 +1286,7 @@ public class ARSCDecoder {
 
     public String getReplaceString() throws AndrolibException {
       if (mReplaceStringBuffer.isEmpty()) {
-        throw new AndrolibException(String.format("now can only proguard less than 35594 in a single type\n"));
+        throw new AndrolibException(String.format("now can only proguard less than 107770 in a single type\n"));
       }
       return mReplaceStringBuffer.remove(0);
     }

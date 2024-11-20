@@ -9,6 +9,7 @@ import java.io.InputStreamReader;
 import java.io.LineNumberReader;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.Map;
 
 public class ResourceRepackage {
 
@@ -19,6 +20,8 @@ public class ResourceRepackage {
   private File mAlignedWith7ZipApk;
   private File m7zipOutPutDir;
   private File mStoredOutPutDir;
+  private File mDuplicateOutPutDir;
+  private File mDupStoreDir;
   private String mApkName;
   private File mOutDir;
 
@@ -44,6 +47,8 @@ public class ResourceRepackage {
     //删除目录
     FileOperation.deleteDir(m7zipOutPutDir);
     FileOperation.deleteDir(mStoredOutPutDir);
+    FileOperation.deleteDir(mDuplicateOutPutDir);
+    FileOperation.deleteDir(mDupStoreDir);
     if (mSignedWith7ZipApk.exists()) {
       mSignedWith7ZipApk.delete();
     }
@@ -57,7 +62,7 @@ public class ResourceRepackage {
   private void insureFileName() throws IOException {
     if (!mSignedApk.exists()) {
       throw new IOException(String.format("can not found the signed apk file to repackage" + ", path=%s",
-          mSignedApk.getAbsolutePath()
+              mSignedApk.getAbsolutePath()
       ));
     }
     //需要自己安装7zip
@@ -73,39 +78,134 @@ public class ResourceRepackage {
 
     m7zipOutPutDir = new File(mOutDir.getAbsolutePath(), TypedValue.OUT_7ZIP_FILE_PATH);
     mStoredOutPutDir = new File(mOutDir.getAbsolutePath(), "storefiles");
+    mDuplicateOutPutDir = new File(mOutDir.getAbsolutePath(), "duplicate");
+    mDupStoreDir = new File(mOutDir.getAbsolutePath(), "duplicateStoreFiles");
     //删除目录,因为之前的方法是把整个输出目录都删除，所以不会有问题，现在不会，所以要单独删
     FileOperation.deleteDir(m7zipOutPutDir);
     FileOperation.deleteDir(mStoredOutPutDir);
+    FileOperation.deleteDir(mDuplicateOutPutDir);
+    FileOperation.deleteDir(mDupStoreDir);
     FileOperation.deleteDir(mSignedWith7ZipApk);
     FileOperation.deleteDir(mAlignedWith7ZipApk);
   }
 
   private void repackageWith7z() throws IOException, InterruptedException {
     System.out.printf("use 7zip to repackage: %s, will cost much more time\n", mSignedWith7ZipApk.getName());
-    HashMap<String, Integer> compressData = FileOperation.unZipAPk(mSignedApk.getAbsolutePath(),
-        m7zipOutPutDir.getAbsolutePath()
+    HashMap<String, FileOperation.CompressData> compressData = FileOperation.unZipAPk(mSignedApk.getAbsolutePath(),
+            m7zipOutPutDir.getAbsolutePath()
     );
+    ArrayList<String> duplicateFiles = new ArrayList<>();
+    for (Map.Entry<String, FileOperation.CompressData> entry : compressData.entrySet()) {
+      FileOperation.CompressData value = entry.getValue();
+      String newName = value.newName;
+      File file = new File(m7zipOutPutDir.getAbsolutePath(), newName);
+      if (!file.exists())
+        continue;
+      boolean needRename = false;
+      if (newName.endsWith(".duplicatefile"))
+        needRename = true;
+      if (needRename)
+        duplicateFiles.add(entry.getKey());
+    }
+    moveDuplicateFiles(compressData, duplicateFiles);
     //首先一次性生成一个全部都是压缩的安装包
     generalRaw7zip();
     ArrayList<String> storedFiles = new ArrayList<>();
     //对于不压缩的要update回去
-    for (String name : compressData.keySet()) {
-      File file = new File(m7zipOutPutDir.getAbsolutePath(), name);
+    for (Map.Entry<String, FileOperation.CompressData> entry : compressData.entrySet()) {
+      FileOperation.CompressData value = entry.getValue();
+      String name = entry.getKey();
+      String newName = value.newName;
+      File file = new File(m7zipOutPutDir.getAbsolutePath(), newName);
       if (!file.exists()) {
         continue;
       }
-      int method = compressData.get(name);
+      int method = value.method;
       if (method == TypedValue.ZIP_STORED) {
         storedFiles.add(name);
       }
     }
 
     addStoredFileIn7Zip(storedFiles);
+    addDuplicateFileIn7Zip();
     if (!mSignedWith7ZipApk.exists()) {
       throw new IOException(String.format(
-          "[repackageWith7z]7z repackage signed apk fail,you must install 7z command line version first, linux: p7zip, window: 7za, path=%s",
-          mSignedWith7ZipApk.getAbsolutePath()
+              "[repackageWith7z]7z repackage signed apk fail,you must install 7z command line version first, linux: p7zip, window: 7za, path=%s",
+              mSignedWith7ZipApk.getAbsolutePath()
       ));
+    }
+  }
+  private void moveDuplicateFiles(Map<String, FileOperation.CompressData> compressData, ArrayList<String> duplicateFiles) throws IOException {
+    String outputName = m7zipOutPutDir.getAbsolutePath() + File.separator;
+    if (!mDuplicateOutPutDir.exists())
+      mDuplicateOutPutDir.mkdirs();
+    if (!mDupStoreDir.exists())
+      mDupStoreDir.mkdirs();
+    String dupParentName = mDuplicateOutPutDir.getAbsolutePath() + File.separator;
+    String dupStoreParentName = mDupStoreDir.getAbsolutePath() + File.separator;
+    for (String key : duplicateFiles) {
+      File dir;
+      FileOperation.CompressData data = compressData.get(key);
+      if (data == null)
+        continue;
+      File file = new File(outputName + data.newName);
+      if (!file.exists())
+        continue;
+      String newName = data.newName;
+      String folder = "0";
+      if (newName.endsWith(".duplicatefile")) {
+        int index = newName.lastIndexOf("$");
+        folder = newName.substring(index + 2, index + 3);
+        newName = newName.substring(0, index);
+      }
+      System.out.println("folder===>" + folder);
+      if (data.method == 0) {
+        dir = new File(dupStoreParentName + folder);
+      } else {
+        dir = new File(dupParentName + folder);
+      }
+      if (!dir.exists()) {
+        boolean mkdirs = dir.mkdirs();
+        System.out.println(folder + " mkdirs===>" + mkdirs);
+      }
+      File dest = new File(dir, newName);
+      FileOperation.copyFileUsingStream(file, dest);
+      file.delete();
+    }
+  }
+
+  private void addDuplicateFileIn7Zip() throws IOException, InterruptedException {
+    String dupParentName = mDuplicateOutPutDir.getAbsolutePath() + File.separator;
+    String dupStoreParentName = mDupStoreDir.getAbsolutePath() + File.separator;
+    File dupDir = new File(dupParentName);
+    File dupStoreDir = new File(dupStoreParentName);
+    File[] dupFiles = dupDir.listFiles(File::isDirectory);
+    if (dupFiles != null){
+      for (File file : dupFiles) {
+        String storePath = file.getAbsolutePath() + File.separator + "*";
+        String cmd = Utils.isPresent(sevenZipPath) ? sevenZipPath : "7za";
+        ProcessBuilder pb = new ProcessBuilder(new String[] { cmd, "a", "-tzip", mSignedWith7ZipApk.getAbsolutePath(), storePath, "-mx9", "-ssc" });
+        Process pro = pb.start();
+        InputStreamReader ir = new InputStreamReader(pro.getInputStream());
+        LineNumberReader input = new LineNumberReader(ir);
+        while (input.readLine() != null);
+        pro.waitFor();
+        pro.destroy();
+      }
+    }
+    File[] dupStoreFiles = dupStoreDir.listFiles(File::isDirectory);
+    if (dupStoreFiles != null){
+      for (File file : dupStoreFiles) {
+        String storePath = file.getAbsolutePath() + File.separator + "*";
+        String cmd = Utils.isPresent(sevenZipPath) ? sevenZipPath : "7za";
+        ProcessBuilder pb = new ProcessBuilder(new String[] { cmd, "a", "-tzip", mSignedWith7ZipApk.getAbsolutePath(), storePath, "-mx0", "-ssc" });
+        Process pro = pb.start();
+        InputStreamReader ir = new InputStreamReader(pro.getInputStream());
+        LineNumberReader input = new LineNumberReader(ir);
+        while (input.readLine() != null);
+        pro.waitFor();
+        pro.destroy();
+      }
     }
   }
 
@@ -130,22 +230,22 @@ public class ResourceRepackage {
 
   private void addStoredFileIn7Zip(ArrayList<String> storedFiles) throws IOException, InterruptedException {
     System.out.printf("[addStoredFileIn7Zip]rewrite the stored file into the 7zip, file count:%d\n",
-        storedFiles.size()
+            storedFiles.size()
     );
     String storedParentName = mStoredOutPutDir.getAbsolutePath() + File.separator;
     String outputName = m7zipOutPutDir.getAbsolutePath() + File.separator;
     for (String name : storedFiles) {
-      FileOperation.copyFileUsingStream(new File(outputName + name), new File(storedParentName + name));
+      FileOperation.copyFileUsingStream(new File(outputName + name), new File(storedParentName + File.separator + name));
     }
     storedParentName = storedParentName + File.separator + "*";
     //极限压缩
     String cmd = Utils.isPresent(sevenZipPath) ? sevenZipPath : TypedValue.COMMAND_7ZIP;
     ProcessBuilder pb = new ProcessBuilder(cmd,
-        "a",
-        "-tzip",
-        mSignedWith7ZipApk.getAbsolutePath(),
-        storedParentName,
-        "-mx0"
+            "a",
+            "-tzip",
+            mSignedWith7ZipApk.getAbsolutePath(),
+            storedParentName,
+            "-mx0"
     );
     Process pro = pb.start();
 
