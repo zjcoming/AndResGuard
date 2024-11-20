@@ -3,9 +3,19 @@ buildscript {
   repositories {
     google()
     jcenter()
+    maven {
+      url = uri("${rootDir}/local_maven/RELEASE")
+    }
+    maven {
+      url = uri("${rootDir}/local_maven/SNAPSHOT")
+    }
+    maven {
+      url = uri("${rootDir}/base_local_maven/RELEASE")
+    }
   }
   dependencies {
     classpath 'com.android.tools.build:gradle:4.1.0'
+    classpath 'com.zjcoming.tools:res-guard-plugin:0.0.1'
   }
 }
 

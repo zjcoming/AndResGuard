@@ -1,0 +1,93 @@
+{
+  "formatVersion": "1.1",
+  "component": {
+    "group": "com.zjcoming.tools",
+    "module": "res-guard-plugin",
+    "version": "0.0.1",
+    "attributes": {
+      "org.gradle.status": "release"
+    }
+  },
+  "createdBy": {
+    "gradle": {
+      "version": "6.5",
+      "buildId": "q7lrtmvikfab3jqewnihz4trne"
+    }
+  },
+  "variants": [
+    {
+      "name": "apiElements",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.jvm.version": 8,
+        "org.gradle.libraryelements": "jar",
+        "org.gradle.usage": "java-api"
+      },
+      "dependencies": [
+        {
+          "group": "com.google.gradle",
+          "module": "osdetector-gradle-plugin",
+          "version": {
+            "requires": "1.6.0"
+          }
+        },
+        {
+          "group": "com.zjcoming.tools",
+          "module": "AndResGuard-core",
+          "version": {
+            "requires": "0.0.1"
+          }
+        }
+      ],
+      "files": [
+        {
+          "name": "res-guard-plugin-0.0.1.jar",
+          "url": "res-guard-plugin-0.0.1.jar",
+          "size": 35818,
+          "sha512": "4ef88906521028b31286a23db606df60c2e36ce6b6d1a5448e2e91b35731dcbb0b2687036a3e91bee28f32aece845c1d362812a210ace8612fe34a58c8fa0102",
+          "sha256": "f892d156426d68a8e4ef8e0dff1c7a25e2044024b29058822e0acc3a496b13fd",
+          "sha1": "9af7a1b3cf960f6fdeec2c25237fa9eb3276fbbc",
+          "md5": "2bcec875a6da2451acc016d2de9e2e96"
+        }
+      ]
+    },
+    {
+      "name": "runtimeElements",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.jvm.version": 8,
+        "org.gradle.libraryelements": "jar",
+        "org.gradle.usage": "java-runtime"
+      },
+      "dependencies": [
+        {
+          "group": "com.google.gradle",
+          "module": "osdetector-gradle-plugin",
+          "version": {
+            "requires": "1.6.0"
+          }
+        },
+        {
+          "group": "com.zjcoming.tools",
+          "module": "AndResGuard-core",
+          "version": {
+            "requires": "0.0.1"
+          }
+        }
+      ],
+      "files": [
+        {
+          "name": "res-guard-plugin-0.0.1.jar",
+          "url": "res-guard-plugin-0.0.1.jar",
+          "size": 35818,
+          "sha512": "4ef88906521028b31286a23db606df60c2e36ce6b6d1a5448e2e91b35731dcbb0b2687036a3e91bee28f32aece845c1d362812a210ace8612fe34a58c8fa0102",
+          "sha256": "f892d156426d68a8e4ef8e0dff1c7a25e2044024b29058822e0acc3a496b13fd",
+          "sha1": "9af7a1b3cf960f6fdeec2c25237fa9eb3276fbbc",
+          "md5": "2bcec875a6da2451acc016d2de9e2e96"
+        }
+      ]
+    }
+  ]
+}

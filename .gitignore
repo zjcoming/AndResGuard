@@ -29,7 +29,7 @@ proguard/
 
 # Log Files
 *.log
-
+local_maven/
 .DS_Store
 work/outapk/*
 local_repo
