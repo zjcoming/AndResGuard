@@ -1,2 +1,6 @@
-include ':AndResGuard-core', ':AndResGuard-gradle-plugin', ':AndResGuard-cli'
+rootProject.name = "AndResGuard"
+include ':AndResGuard-core'
 include 'SevenZip'
+include ':app'
+include ':AndResGuard-gradle-plugin'
+include ':AndResGuard-cli'

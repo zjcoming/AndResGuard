@@ -33,7 +33,10 @@ proguard/
 .DS_Store
 work/outapk/*
 local_repo
-
+app/build
+AndResGuard-cli/build
+AndResGuard-core/build
+AndResGuard-gradle-plugin/build
 tool_output/outapk
 
 node_modules/
